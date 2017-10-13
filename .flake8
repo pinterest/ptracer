@@ -1,0 +1,3 @@
+[flake8]
+ignore = E402,E731
+exclude = .git,__pycache__,build,dist,.eggs,.tox,ptracer/ptrace/_gen_defs*,yacctab.py,lextab.py
