@@ -9,15 +9,16 @@ import operator
 
 
 class SysCallPattern(object):
-    def __init__(self, name, args=None, result=None):
+    def __init__(self, name=None, args=None, result=None):
         self.name = name
         self.args = args
         self.result = result
 
         self.matcher = []
 
-        self.matcher.append(self._get_comparator(
-            operator.attrgetter('_name'), name))
+        if name is not None:
+            self.matcher.append(self._get_comparator(
+                operator.attrgetter('_name'), name))
 
         if result is not None:
             self.matcher.append(self._get_comparator(
