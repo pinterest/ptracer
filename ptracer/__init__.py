@@ -8,9 +8,15 @@ __version__ = '0.5'
 __all__ = ['context', 'enable', 'disable', 'SysCallPattern']
 
 
+try:
+    import Queue as queue
+except ImportError:
+    import queue
+import multiprocessing
 import threading
 
 from . import _ptracer
+from ._ptracer import PtracerError  # NOQA
 from ._syscall import SysCallPattern  # NOQA
 from . import _lltraceback
 
@@ -28,6 +34,9 @@ class TracingContext(object):
 
         debugger_start_event = threading.Event()
 
+        # Debugger error queue.
+        self.error_queue = multiprocessing.Queue()
+
         if isinstance(filter, SysCallPattern):
             filter = [filter]
 
@@ -35,28 +44,52 @@ class TracingContext(object):
             target=_ptracer._tracing_thread,
             args=(handler_cb, self.thread_stop_event, debugger_start_event,
                   {_lltraceback.gettid(): threading.current_thread().ident},
-                  filter))
+                  filter, self.error_queue))
 
         self.ptrace_thread.start()
-        self.ptrace_thread_join = self.ptrace_thread.join
 
         # Wait for debugger to start
-        debugger_start_event.wait()
-
-        try:
-            # Perform a magic syscall to enable syscall callback invocation.
-            open(b'\x01\x02\x03', 'r')
-        except IOError:
-            pass
+        if not debugger_start_event.wait(1):
+            try:
+                self.disable()
+            except Exception:
+                raise
+            else:
+                raise PtracerError('Unhandled exception in ptrace process')
+        else:
+            try:
+                # Perform a magic syscall to enable
+                # syscall callback invocation.
+                open(b'\x01\x02\x03', 'r')
+            except IOError:
+                pass
 
     def disable(self):
         if not self.enabled:
             return
+
+        try:
+            # Notify the debugger we're not tracing anymore.
+            open(b'\x03\x02\x01', 'r')
+        except IOError:
+            pass
+
+        self.enabled = False
         self.thread_stop_event.set()
         self.thread_stop_event = None
-        self.ptrace_thread_join()
+        self.ptrace_thread.join()
         self.ptrace_thread = None
-        self.enabled = False
+
+        try:
+            error = self.error_queue.get_nowait()
+        except queue.Empty:
+            error = None
+
+        self.error_queue.close()
+        self.error_queue = None
+
+        if error is not None:
+            raise error
 
 
 class context(object):

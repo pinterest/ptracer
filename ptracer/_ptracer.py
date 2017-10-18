@@ -21,6 +21,7 @@ import signal
 import struct
 import threading
 import time
+import traceback
 
 from ptracer import _lltraceback
 from ptracer import ptrace
@@ -29,10 +30,22 @@ from ptracer import ptrace
 logger = logging.getLogger('ptracer')
 
 
+class PtracerError(Exception):
+    def __init__(self, msg, orig_exc=None):
+        super(PtracerError, self).__init__(msg)
+        self.orig_exc = orig_exc
+
+    def __str__(self):
+        if self.orig_exc is not None:
+            return '{}\n{}'.format(self.args[0], self.orig_exc)
+        else:
+            return self.args[0]
+
+
 # The tracing thread is run parallel to the traced thread,
 # the syscall callback will be called in this thread.
 def _tracing_thread(handler_cb, thread_stop_event, debugger_start_event,
-                    thread_map, syscall_filter):
+                    thread_map, syscall_filter, error_queue):
 
     # The main syscall queue.
     syscall_queue = multiprocessing.Queue()
@@ -53,7 +66,7 @@ def _tracing_thread(handler_cb, thread_stop_event, debugger_start_event,
         target=_tracing_process,
         args=(os.getpid(), dbgproc_started, dbgproc_stop,
               stack_request_write, stack_response_read,
-              syscall_queue, syscall_filter))
+              syscall_queue, syscall_filter, error_queue))
 
     ptrace_process.start()
 
@@ -62,15 +75,18 @@ def _tracing_thread(handler_cb, thread_stop_event, debugger_start_event,
     _lltraceback.start_thread(
         stack_request_read, stack_response_write, thread_map)
 
-    # Wait for debugger to start
-    dbgproc_started.wait()
-
-    # Notify the main thread that we're ready.
-    debugger_start_event.set()
-
     try:
+        # Wait for debugger to start
+        if not dbgproc_started.wait(1):
+            # If the debugger has not started in 1 second, assume
+            # it died and bail out.
+            return
+
+        # Notify the main thread that we're ready.
+        debugger_start_event.set()
+
         while True:
-            if thread_stop_event.is_set():
+            if thread_stop_event.is_set() or not ptrace_process.is_alive():
                 # The tracing context has exited, stop the debugger.
                 dbgproc_stop.set()
 
@@ -100,6 +116,9 @@ def _tracing_thread(handler_cb, thread_stop_event, debugger_start_event,
         ptrace_process.join(1)
         if ptrace_process.exitcode is None:
             ptrace_process.terminate()
+            ptrace_process.join(1)
+            if ptrace_process.exitcode is None:
+                os.kill(ptrace_process.pid, signal.SIGKILL)
 
         os.close(stack_response_read)
         os.close(stack_response_write)
@@ -109,7 +128,7 @@ def _tracing_thread(handler_cb, thread_stop_event, debugger_start_event,
 
 def _tracing_process(pid, dbgproc_started, dbgproc_stop,
                      stack_request_pipe, stack_response_pipe,
-                     syscall_queue, syscall_filter):
+                     syscall_queue, syscall_filter, error_queue):
     # The tracing process consists of two threads:
     # the first reads the call stacks from the tracee, and the second
     # does the actual tracing.
@@ -121,12 +140,34 @@ def _tracing_process(pid, dbgproc_started, dbgproc_stop,
         target=_debugger_thread,
         args=(pid, dbgproc_started, dbgthread_stop,
               stack_request_pipe, stack_queue,
-              syscall_queue, syscall_filter),
+              syscall_queue, syscall_filter, error_queue),
         name='pytracer-debugger')
 
     debugger_thread.daemon = True
     debugger_thread.start()
 
+    try:
+        _read_callstacks(stack_response_pipe, stack_queue, debugger_thread,
+                         dbgproc_stop)
+
+    except Exception:
+        logger.debug('Unhandled exception in ptrace process', exc_info=True)
+        err = PtracerError('Unhandled exception in ptrace process',
+                           orig_exc=traceback.format_exc())
+        error_queue.put_nowait(err)
+
+    finally:
+        syscall_queue.close()
+
+        if debugger_thread.is_alive():
+            # Unblock the debugger if it is waiting on the stack queue
+            stack_queue.put_nowait(None)
+            dbgthread_stop.set()
+            debugger_thread.join()
+
+
+def _read_callstacks(stack_response_pipe, stack_queue, debugger_thread,
+                     dbgproc_stop):
     buf = b''
     stacklen = -1
     tuplesize = 0
@@ -207,18 +248,24 @@ def _tracing_process(pid, dbgproc_started, dbgproc_stop,
             # We were asked to stop by the traced process.
             break
 
-    syscall_queue.close()
-
-    if debugger_thread.is_alive():
-        # Unblock the debugger if it is waiting on the stack queue
-        stack_queue.put_nowait(None)
-        dbgthread_stop.set()
-        debugger_thread.join()
-
 
 def _debugger_thread(main_pid, dbgproc_started, dbgthread_stop,
                      stack_request_pipe, stack_queue,
-                     syscall_queue, syscall_filter):
+                     syscall_queue, syscall_filter, error_queue):
+    try:
+        _debugger_thread_inner(main_pid, dbgproc_started, dbgthread_stop,
+                               stack_request_pipe, stack_queue, syscall_queue,
+                               syscall_filter)
+    except Exception:
+        logger.debug('Unhandled exception in ptrace process', exc_info=True)
+        err = PtracerError('Unhandled exception in ptrace process',
+                           orig_exc=traceback.format_exc())
+        error_queue.put_nowait(err)
+
+
+def _debugger_thread_inner(main_pid, dbgproc_started, dbgthread_stop,
+                           stack_request_pipe, stack_queue,
+                           syscall_queue, syscall_filter):
     ptrace_options = ptrace.PTRACE_O_TRACECLONE
     # Attach to the tracee and wait for it to stop.
     ptrace.attach_and_wait(main_pid, ptrace_options)
@@ -241,13 +288,13 @@ def _debugger_thread(main_pid, dbgproc_started, dbgthread_stop,
     # Notify the parent that we are ready to start tracing.
     dbgproc_started.set()
 
-    # Restart the tracee and enter the tracing loop.
-    ptrace.syscall(main_pid)
-
     try:
+        # Restart the tracee and enter the tracing loop.
+        ptrace.syscall(main_pid)
+
         while True:
             if dbgthread_stop.is_set():
-                return
+                break
 
             pid, status = ptrace.wait(-1)
 
@@ -322,17 +369,27 @@ def _debugger_thread(main_pid, dbgproc_started, dbgthread_stop,
                         # Syscall-exit-stop.
                         ptrace.syscall_exit(syscall, regs, mem_fd)
 
-                        if enabled and (filter_ is None or filter_(syscall)):
-                            # Wait for the traceback to arrive.
-                            os.write(stack_request_pipe,
-                                     struct.pack('!Q', pid))
-                            stack = stack_queue.get()
-                            if stack is None:
-                                ptrace.cont(pid)
-                                break
+                        if enabled:
+                            # Stop tracing once the tracee executes
+                            # the magic open() in ptracer.disable().
+                            stop_tracing = (
+                                syscall.name == 'open' and
+                                syscall.args[0].value == b'\x03\x02\x01'
+                            )
 
-                            syscall.traceback = stack
-                            syscall_queue.put_nowait(syscall)
+                            if stop_tracing:
+                                break
+                            elif filter_ is None or filter_(syscall):
+                                # Wait for the traceback to arrive.
+                                os.write(stack_request_pipe,
+                                         struct.pack('!Q', pid))
+                                stack = stack_queue.get()
+                                if stack is None:
+                                    ptrace.cont(pid)
+                                    break
+
+                                syscall.traceback = stack
+                                syscall_queue.put_nowait(syscall)
 
                         elif not enabled:
                             # Start tracing once the tracee executes
@@ -366,7 +423,7 @@ def _debugger_thread(main_pid, dbgproc_started, dbgthread_stop,
         for fd in mem_fds.values():
             try:
                 os.close(fd)
-            except IOError:
+            except (OSError, IOError):
                 pass
 
 
@@ -374,8 +431,9 @@ def _open_procmem(pid):
     try:
         mem_fd = os.open('/proc/{}/mem'.format(pid), os.O_RDONLY)
     except IOError as e:
-        if e.errno != errno.EACCESS:
-            logger.exception('cannot access /proc/{}/mem'.format(pid))
+        if e.errno == errno.EACCESS:
+            logger.debug('cannot access /proc/{}/mem'.format(pid),
+                         exc_info=True)
             return None
         else:
             raise

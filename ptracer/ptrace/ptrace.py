@@ -5,6 +5,7 @@
 
 
 import ctypes
+import errno
 import os
 import signal
 
@@ -55,7 +56,7 @@ def getfpregs(pid):
 
 
 def getsiginfo(pid):
-    siginfo = defs.siginfo_t
+    siginfo = defs.siginfo_t()
     _ptrace(defs.PTRACE_GETSIGINFO, pid, 0, ctypes.addressof(siginfo))
     return siginfo
 
@@ -94,6 +95,45 @@ def attach_and_wait(pid, options=0):
 
 
 def wait_for_trace_stop(pid):
+    try:
+        _wait_for_trace_stop(pid)
+    except BaseException:
+        try:
+            # If _wait_for_trace_stop fails for any reason,
+            # we must try to detach from the tracee to avoid
+            # leaving it blocked.
+            detach(pid)
+        except BaseException:
+            pass
+
+        raise
+
+
+def _wait_for_trace_stop(pid):
+    try:
+        # First, check if the tracee is already stopped.
+        siginfo = getsiginfo(pid)
+    except OSError as e:
+        if e.errno == errno.ESRCH:
+            # The tracee is still running, so we'll wait
+            pass
+        else:
+            raise
+    else:
+        # Normally, PTRACE_ATTACH will send a SIGSTOP to the tracee,
+        # which we will see here.  However, on some kernels the actual
+        # signal may sometimes be SIGTRAP, and that seems to happen
+        # when the previous tracer had died without calling PTRACE_DETACH
+        # on this process first.  In this case, we need to restart the process
+        # and wait for the real SIGSTOP.
+        if siginfo.si_signo == signal.SIGTRAP:
+            cont(pid, siginfo.si_signo)
+        elif is_stop_signal(siginfo.si_signo):
+            return
+        else:
+            raise OSError('traced process has stopped with an unexpected '
+                          'signal {}'.format(siginfo.si_signo))
+
     pid, status = wait(pid)
 
     if os.WIFEXITED(status):

@@ -55,4 +55,7 @@ setuptools.setup(
         )
     ],
     test_suite='tests.suite',
+    tests_require=[
+        'mock~=2.0.0; python_version < "3.3"'
+    ]
 )

@@ -4,18 +4,57 @@
 # the Apache 2.0 License: http://www.apache.org/licenses/LICENSE-2.0
 
 
+import errno
 import os
 import re
 import threading
 import unittest
 
+try:
+    from unittest import mock
+except ImportError:
+    import mock
+
 import ptracer
 
-import logging
-logging.basicConfig(level=logging.DEBUG)
+
+eperm_mock = mock.Mock(
+    side_effect=OSError(errno.EPERM, 'Operation not permitted'))
 
 
 class TestPtracer(unittest.TestCase):
+    @mock.patch('ptracer.ptrace.attach_and_wait', eperm_mock)
+    def test_ptracer__fail_01(self):
+        with self.assertRaisesRegexp(ptracer.PtracerError,
+                                     'Operation not permitted'):
+            with ptracer.context(lambda s: None):
+                f = open('/dev/zero', 'r')
+                f.close()
+
+    @mock.patch('ptracer.ptrace.syscall', eperm_mock)
+    def test_ptracer__fail_02(self):
+        with self.assertRaisesRegexp(ptracer.PtracerError,
+                                     'Operation not permitted'):
+            with ptracer.context(lambda s: None):
+                f = open('/dev/zero', 'r')
+                f.close()
+
+    @mock.patch('ptracer.ptrace.syscall_exit', eperm_mock)
+    def test_ptracer__fail_03(self):
+        with self.assertRaisesRegexp(ptracer.PtracerError,
+                                     'Operation not permitted'):
+            with ptracer.context(lambda s: None):
+                f = open('/dev/zero', 'r')
+                f.close()
+
+    @mock.patch('ptracer.ptrace.ptrace.getsiginfo', eperm_mock)
+    def test_ptracer__fail_04(self):
+        with self.assertRaisesRegexp(ptracer.PtracerError,
+                                     'Operation not permitted'):
+            with ptracer.context(lambda s: None):
+                f = open('/dev/zero', 'r')
+                f.close()
+
     def test_ptracer_basic(self):
         syscalls = []
 
