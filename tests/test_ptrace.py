@@ -85,6 +85,8 @@ class TestPtrace(unittest.TestCase):
         fno = open_call.result.value
         self.assertGreater(fno, 0)
 
+        self.assertIsNotNone(open_call.result.type)
+
         self.assertEqual(write_call.args[0].value, fno)
         self.assertEqual(write_call.args[2].value, 3)
         self.assertEqual(write_call.result.value, 3)

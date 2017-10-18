@@ -92,6 +92,6 @@ def syscall_exit(syscall, regs, mem_fd=None):
     else:
         value = signature.result.ctype(raw_result).value
 
-    syscall.result = syscalldef.SysCallResult(raw_result, value)
+    syscall.result = syscalldef.SysCallResult(restype, raw_result, value)
 
     return syscall

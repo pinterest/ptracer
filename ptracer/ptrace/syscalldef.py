@@ -48,7 +48,8 @@ class SysCallArg(object):
 
 
 class SysCallResult(object):
-    def __init__(self, raw_value, value):
+    def __init__(self, type, raw_value, value):
+        self.type = type
         self.raw_value = raw_value
         self.value = value
 
