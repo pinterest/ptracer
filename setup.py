@@ -5,7 +5,7 @@ import sys
 import setuptools
 
 
-CFLAGS = ['-Wall', '-Wsign-compare', '-Wconversion', '-ggdb', '-O0']
+CFLAGS = ['-Wall', '-Wsign-compare', '-Wconversion']
 
 
 if sys.platform in ('win32', 'cygwin', 'cli'):

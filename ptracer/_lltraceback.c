@@ -221,10 +221,11 @@ static ssize_t
 _write_string(int fd, PyObject *text)
 {
     Py_ssize_t size;
-    char *s;
 #if PY_MAJOR_VERSION >= 3
+    const char *s;
     s = PyUnicode_AsUTF8AndSize(text, &size);
 #else
+    char *s;
     PyString_AsStringAndSize(text, &s, &size);
 #endif
     write_int32(fd, (int32_t)size);
@@ -397,7 +398,7 @@ lltraceback_thread(void *arg)
         } else {
             tstate = PyInterpreterState_ThreadHead(state->interp);
             // Find the requested thread state.
-            while (tstate != NULL && tstate->thread_id != _thread_id) {
+            while (tstate != NULL && (long)tstate->thread_id != _thread_id) {
                 tstate = PyThreadState_Next(tstate);
             }
             if (dump_traceback(state->outputfd, tstate) < 0) {
@@ -456,7 +457,7 @@ _new_thread_hook(PyObject *self, PyObject *args)
     tstate = PyThreadState_Get();
 
     res = lltraceback_thread_map_set(
-        &_state.thread_map, _tid, tstate->thread_id);
+        &_state.thread_map, _tid, (long)tstate->thread_id);
     if (res == -1) {
         goto error;
     }
@@ -543,7 +544,7 @@ lltraceback_start_thread(PyObject *self, PyObject *args, PyObject *kwargs)
     }
 
     lltraceback_thread_map_set(
-        &_state.thread_map, _portable_gettid(), tstate->thread_id);
+        &_state.thread_map, _portable_gettid(), (long)tstate->thread_id);
 
     status = pthread_create(&_state.thread_id, NULL,
                             lltraceback_thread, &_state);
