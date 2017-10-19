@@ -8,7 +8,45 @@
 #include <stdint.h>
 #include <sys/ptrace.h>
 
+#ifdef __linux__
+#include <sys/prctl.h>
+#endif
+
 #include "Python.h"
+
+
+#ifdef PR_SET_PTRACER
+static PyObject*
+_set_ptracer(PyObject *self, PyObject *args, PyObject *kwargs)
+{
+    static char *kwlist[] = {"pid", NULL};
+    pid_t pid;
+    int err = 0;
+
+    if (!PyArg_ParseTupleAndKeywords(
+            args, kwargs, "i:set_ptracer", kwlist, &pid))
+    {
+        goto error;
+    }
+
+    if (prctl(PR_SET_PTRACER, pid, 0, 0, 0) < 0) {
+        PyErr_SetFromErrno(PyExc_OSError);
+        goto error;
+    }
+
+    goto finally;
+
+error:
+    err = 1;
+
+finally:
+    if (err) {
+        return NULL;
+    } else {
+        Py_RETURN_NONE;
+    }
+}
+#endif  // PR_SET_PTRACER
 
 
 static PyObject*
@@ -68,6 +106,11 @@ static PyMethodDef module_methods[] = {
     {"ptrace",
      (PyCFunction)_ptrace, METH_VARARGS | METH_KEYWORDS,
      PyDoc_STR("process trace")},
+#ifdef PR_SET_PTRACER
+    {"set_ptracer",
+     (PyCFunction)_set_ptracer, METH_VARARGS | METH_KEYWORDS,
+     PyDoc_STR("allow *pid* to trace the current process")},
+#endif
     {NULL, NULL}  /* sentinel */
 };
 

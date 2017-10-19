@@ -13,6 +13,10 @@ from .defs import *  # noqa
 
 from . import defs
 from ._ptrace import ptrace as _ptrace
+try:
+    from ._ptrace import set_ptracer  # noqa
+except ImportError:
+    pass
 
 
 def traceme():

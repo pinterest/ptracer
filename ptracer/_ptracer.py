@@ -54,21 +54,34 @@ def _tracing_thread(handler_cb, thread_stop_event, debugger_start_event,
     stack_response_read, stack_response_write = os.pipe()
     stack_request_read, stack_request_write = os.pipe()
 
-    # Debugger process start event.
-    dbgproc_started = multiprocessing.Event()
-    # Debugger process stop event.
+    # Debugger process start request event.
+    dbgproc_start = multiprocessing.Event()
+    # Debugger process stop request event.
     dbgproc_stop = multiprocessing.Event()
+    # Debugger process started response event.
+    dbgproc_started = multiprocessing.Event()
 
     # The actual tracing is done by a subprocess.
     # It is necessary because of the GIL, as a ptrace-stopped thread
     # holding the GIL would block the tracer thread as well.
     ptrace_process = multiprocessing.Process(
         target=_tracing_process,
-        args=(os.getpid(), dbgproc_started, dbgproc_stop,
+        args=(os.getpid(), dbgproc_started, dbgproc_start, dbgproc_stop,
               stack_request_write, stack_response_read,
               syscall_queue, syscall_filter, error_queue))
 
     ptrace_process.start()
+
+    if hasattr(ptrace, 'set_ptracer'):
+        # On systems with Yama LSM enabled in mode 1 (e.g. Ubuntu Trusty),
+        # PTRACE_ATTACH will fail with EPERM unless we call PR_SET_PTRACER
+        # with the PID of the tracing process.
+        try:
+            ptrace.set_ptracer(ptrace_process.pid)
+        except OSError as e:
+            pass
+
+    dbgproc_start.set()
 
     # The lltraceback thread is a low-level GIL-independent thread
     # that is used to dump the current call stack in a given Python thread.
@@ -126,12 +139,19 @@ def _tracing_thread(handler_cb, thread_stop_event, debugger_start_event,
         os.close(stack_request_write)
 
 
-def _tracing_process(pid, dbgproc_started, dbgproc_stop,
+def _tracing_process(pid, dbgproc_started, dbgproc_start, dbgproc_stop,
                      stack_request_pipe, stack_response_pipe,
                      syscall_queue, syscall_filter, error_queue):
     # The tracing process consists of two threads:
     # the first reads the call stacks from the tracee, and the second
     # does the actual tracing.
+
+    if not dbgproc_start.wait(1):
+        # The parent failed to continue the startup.
+        err = PtracerError('Debugger startup handshake failed')
+        error_queue.put_nowait(err)
+        return
+
     stack_queue = queue.Queue()
 
     dbgthread_stop = threading.Event()
