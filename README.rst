@@ -53,3 +53,10 @@ Ptracer allows elaborate syscall filtering via the *filter* argument:
 
 In the above example, ptracer will invoke the callback only for successful
 attempts to open files in the "/tmp" directory for writing.
+
+
+Documentation
+-------------
+
+The documentation is available on
+`ptracer.readthedocs.io <https://ptracer.readthedocs.io/>`_.
