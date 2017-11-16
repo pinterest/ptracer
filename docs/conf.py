@@ -4,7 +4,7 @@ import os
 import sys
 
 import alabaster
-import sphinx_rtd_theme
+import sphinx_rtd_theme  # noqa
 
 sys.path.insert(0, os.path.abspath('..'))
 
@@ -51,19 +51,9 @@ html_theme_path = [alabaster.get_path()]
 html_title = 'Ptracer Documentation'
 html_short_title = 'ptracer'
 html_static_path = []
-html_sidebars = {
-    '**': [
-        'about.html',
-        'navigation.html',
-    ]
-}
 html_show_sourcelink = False
 html_show_sphinx = False
 html_show_copyright = True
-html_context = {
-    'css_files': [
-    ],
-}
 htmlhelp_basename = 'ptracerdoc'
 
 
