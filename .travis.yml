@@ -1,3 +1,4 @@
+sudo: required
 language: generic
 
 branches:
@@ -46,4 +47,4 @@ cache:
     pip
 
 script:
-    - python setup.py test
+    - sudo python setup.py test
