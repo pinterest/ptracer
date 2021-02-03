@@ -55,5 +55,4 @@ setuptools.setup(
         )
     ],
     test_suite='tests.suite',
-    tests_require=['mock'] if sys.version_info < (3, 3) else []
 )
