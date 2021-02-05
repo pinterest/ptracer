@@ -81,15 +81,16 @@ class TestPtracer(unittest.TestCase):
                     pass
 
         _trace([
-            ptracer.SysCallPattern(name='open')
+            ptracer.SysCallPattern(name=re.compile('op.*'))
         ])
 
         self.assertEqual(len(syscalls), 3)
 
         _trace([
             ptracer.SysCallPattern(
-                name='open',
+                name=re.compile('openat'),
                 args=[
+                    None,
                     b'/dev/null'
                 ]
             )
@@ -99,8 +100,9 @@ class TestPtracer(unittest.TestCase):
 
         _trace([
             ptracer.SysCallPattern(
-                name=re.compile('op.*'),
+                name=re.compile('openat'),
                 args=[
+                    None,
                     b'/dev/null'
                 ]
             )
@@ -110,8 +112,9 @@ class TestPtracer(unittest.TestCase):
 
         _trace([
             ptracer.SysCallPattern(
-                name=re.compile('op.*'),
+                name=re.compile('openat'),
                 args=[
+                    None,
                     None,
                     lambda arg: arg.value & os.O_WRONLY
                 ]
@@ -137,7 +140,12 @@ class TestPtracer(unittest.TestCase):
             f.close()
 
         flt = ptracer.SysCallPattern(
-            name='open', args=[b'/dev/zero'])
+            name='openat',
+            args=[
+                None,
+                b'/dev/zero'
+            ]
+        )
 
         with ptracer.context(syscalls.append, filter=flt):
             thread = threading.Thread(target=_thread)

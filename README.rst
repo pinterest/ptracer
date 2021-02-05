@@ -1,9 +1,6 @@
 ptracer -- a library for ptrace-based tracing of Python programs
 ================================================================
 
-.. image:: https://travis-ci.org/pinterest/ptracer.svg?branch=master
-    :target: https://travis-ci.org/pinterest/ptracer
-
 Ptracer is a library providing on-demand system call tracing in Python
 programs.
 
