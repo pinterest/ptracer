@@ -395,6 +395,9 @@ def _debugger_thread_inner(main_pid, dbgproc_started, dbgthread_stop,
                             stop_tracing = (
                                 syscall.name == 'open' and
                                 syscall.args[0].value == b'\x03\x02\x01'
+                            ) or (
+                                syscall.name == 'openat' and
+                                syscall.args[1].value == b'\x03\x02\x01'
                             )
 
                             if stop_tracing:
@@ -417,6 +420,9 @@ def _debugger_thread_inner(main_pid, dbgproc_started, dbgthread_stop,
                             start_tracing = (
                                 syscall.name == 'open' and
                                 syscall.args[0].value == b'\x01\x02\x03'
+                            ) or (
+                                syscall.name == 'openat' and
+                                syscall.args[1].value == b'\x01\x02\x03'
                             )
 
                             if start_tracing:

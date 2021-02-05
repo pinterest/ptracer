@@ -74,14 +74,19 @@ class TestPtrace(unittest.TestCase):
                     raise
 
         syscalls = [
-            s for s in syscalls if s.name in {'open', 'write', 'close'}
+            s for s in syscalls if s.name
+            in {'open', 'openat', 'write', 'close'}
         ]
 
         self.assertEqual(len(syscalls), 5)
 
         open_call, write_call, close_call = syscalls[:3]
 
-        self.assertEqual(open_call.args[0].value, b'/dev/null')
+        if open_call.name == 'openat':
+            self.assertEqual(open_call.args[1].value, b'/dev/null')
+        else:
+            self.assertEqual(open_call.args[0].value, b'/dev/null')
+
         fno = open_call.result.value
         self.assertGreater(fno, 0)
 
@@ -165,14 +170,18 @@ class TestPtrace(unittest.TestCase):
                     raise
 
         syscalls = [
-            s for s in syscalls if s.name in {'open', 'write', 'close'}
+            s for s in syscalls if s.name
+            in {'open', 'openat', 'write', 'close'}
         ]
 
         self.assertEqual(len(syscalls), 5)
 
         open_call, write_call, close_call = syscalls[:3]
 
-        self.assertEqual(open_call.args[0].value, b'/dev/null')
+        if open_call.name == 'openat':
+            self.assertEqual(open_call.args[1].value, b'/dev/null')
+        else:
+            self.assertEqual(open_call.args[0].value, b'/dev/null')
         fno = open_call.result.value
         self.assertGreater(fno, 0)
 
