@@ -182,7 +182,7 @@ Module Reference
       A list of stack trace entries similar to the one returned by
       :func:`traceback.extract_stack <python:traceback.extract_stack>`.
 
-      The trace correponds to the call stack which triggered the system call.
+      The trace corresponds to the call stack which triggered the system call.
 
 
 .. class:: SysCallArg
