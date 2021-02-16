@@ -39,6 +39,26 @@
 #  define PYSTRING_CHECK PyString_Check
 #endif
 
+// bpo-42262 added Py_XNewRef() to Python 3.10.0a3
+#if PY_VERSION_HEX < 0x030A00A3 && !defined(Py_XNewRef)
+static inline PyObject* _Py_XNewRef(PyObject *obj)
+{
+    Py_XINCREF(obj);
+    return obj;
+}
+#define Py_XNewRef(obj) _Py_XNewRef((PyObject*)(obj))
+#endif
+
+// bpo-40429 added PyThreadState_GetFrame() to Python 3.9.0b1
+#if PY_VERSION_HEX < 0x030900B1
+static inline PyFrameObject*
+PyThreadState_GetFrame(PyThreadState *tstate)
+{
+    assert(tstate != NULL);
+    return (PyFrameObject *)Py_XNewRef(tstate->frame);
+}
+#endif
+
 
 static long
 _portable_gettid(void)
@@ -300,7 +320,7 @@ dump_traceback(int fd, PyThreadState *tstate)
     int depth;
 
     if (tstate != NULL) {
-        top_frame = _PyThreadState_GetFrame(tstate);
+        top_frame = PyThreadState_GetFrame(tstate);
     }
 
     if (top_frame == NULL) {
