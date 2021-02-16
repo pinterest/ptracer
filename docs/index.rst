@@ -1,7 +1,3 @@
-.. image:: https://travis-ci.org/pinterest/ptracer.svg?branch=master
-    :target: https://travis-ci.org/pinterest/ptracer
-
-
 =======
 ptracer
 =======
