@@ -115,6 +115,18 @@ class TestPtracer(unittest.TestCase):
                 name=re.compile('openat'),
                 args=[
                     None,
+                    re.compile(b'.*/null'),
+                ]
+            )
+        ])
+
+        self.assertEqual(len(syscalls), 1)
+
+        _trace([
+            ptracer.SysCallPattern(
+                name=re.compile('openat'),
+                args=[
+                    None,
                     None,
                     lambda arg: arg.value & os.O_WRONLY
                 ]

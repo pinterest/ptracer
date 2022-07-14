@@ -8,6 +8,12 @@ import functools
 import operator
 
 
+def _maybe_format(value):
+    if isinstance(value, (bytes, bytearray, str)):
+        return value
+    return '{}'.format(value)
+
+
 class SysCallPattern(object):
     def __init__(self, name=None, args=None, result=None):
         self.name = name
@@ -41,7 +47,7 @@ class SysCallPattern(object):
             getter = indirection
         elif hasattr(value, 'match'):
             checker = value.match
-            getter = lambda sc: '{}'.format(indirection(sc).value)
+            getter = lambda sc: _maybe_format(indirection(sc).value)
         else:
             checker = lambda v: v == value
             getter = lambda sc: indirection(sc).value
