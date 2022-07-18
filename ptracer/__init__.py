@@ -4,7 +4,7 @@
 # the Apache 2.0 License: http://www.apache.org/licenses/LICENSE-2.0
 
 
-__version__ = '0.6'
+__version__ = '0.6.1'
 __all__ = ['context', 'enable', 'disable', 'SysCallPattern']
 
 
